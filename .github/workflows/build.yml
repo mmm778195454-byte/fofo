@@ -1,41 +1,47 @@
-name: Build MDK4 Package
+name: Build MDK4 Package for OpenWrt 24.10.1
 
 on:
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
-      - name: Checkout Repository
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential gawk gettext git libncurses5-dev libssl-dev python3 rsync unzip zstd wget file coreutils base-files
+          sudo apt-get install -y \
+            build-essential ccache ecj fastjar g++ gawk gettext git java-propose-classpath \
+            libelf-dev libncurses5-dev libncursesw5-dev libssl-dev python3 python3-distutils \
+            python3-setuptools python3-dev rsync subversion swig time xsltproc zlib1g-dev zstd \
+            wget curl file coreutils base-files
 
-      - name: Download & Setup OpenWrt SDK
+      - name: Setup OpenWrt SDK (ath79/nand - 24.10.1)
         run: |
           wget https://downloads.openwrt.org/releases/24.10.1/targets/ath79/nand/openwrt-sdk-24.10.1-ath79-nand_gcc-13.3.0_musl.Linux-x86_64.tar.zst
           tar -I zstd -xf openwrt-sdk-24.10.1-ath79-nand_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" | head -n 1)
-          mv "$SDK_DIR" sdk
+          mv openwrt-sdk-24.10.1-ath79-nand* sdk
 
-      - name: Add mdk4 Package Feed & Compile
+      - name: Add Feeds & Compile mdk4
         run: |
           cd sdk
-          # إضافة مستودع الحزم الرسمي لجلب mdk4 مباشرة
-          git clone https://github.com/openwrt/packages.git package/openwrt-packages
-          ./scripts/feeds update -a
+          # إضافة مستودع الحزم الرسمي بفرع 24.10
+          echo "src-git packages https://github.com/openwrt/packages.git;openwrt-24.10" > feeds.conf.default
+          ./scripts/feeds update packages
           ./scripts/feeds install mdk4
           
-          # تجاوز فحص البيئة والبناء المباشر
+          # إعداد ملف التكوين وتخطي فحص البيئة الصارم
           make defconfig
           make package/mdk4/compile V=s FORCE=1 IGNORE_ERRORS=1
 
-      - name: Upload Artifacts
+      - name: Collect & Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: mdk4-openwrt-24.10.1
-          path: sdk/bin/
+          name: mdk4-openwrt-24.10.1-mips_24kc
+          path: |
+            sdk/bin/packages/mips_24kc/packages/mdk4*
+            sdk/bin/targets/ath79/nand/packages/mdk4*
+            sdk/bin/packages/mips_24kc/base/mdk4*
